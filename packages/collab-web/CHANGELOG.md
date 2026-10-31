@@ -5,6 +5,7 @@
 ### Added
 
 - Added `bun run serve` / `bun run start` to serve the built web client at `/omp` and the local relay from one Bun server (`scripts/serve.ts`)
+- Added collapsible activity groups to the transcript: consecutive tool calls and thinking blocks merge into one card with a summary bar (tool/thinking counts, running spinner, error count) and Expand / Peek / Collapse views; by default only the group the agent is still working on peeks (capped at 30% of the viewport) and every group collapses once a reply or prompt follows it (a failed turn keeps its last steps open), while a view choice, a click inside, or scrolling up inside a group pins it. Also restyled prompts (accent bar, sender · time line) and agent prose
 
 ## [18.13.3] - 2026-10-28
 

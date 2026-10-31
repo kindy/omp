@@ -5,8 +5,10 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "rea
 import type { ActiveTool, ConnectionPhase } from "../../lib/client";
 import { fmtTokens } from "../../lib/format";
 import type { ToolRenderHost } from "../../tool-render";
+import { ActivityGroup } from "./ActivityGroup";
+import { appendLive, flattenEntries } from "./items";
 import { Markdown, StreamingMarkdown } from "./Markdown";
-import { ToolCard } from "./ToolCard";
+import { followTranscriptTail, updateTranscriptTailLock } from "./tail-lock";
 import "./transcript.css";
 
 export interface TranscriptProps {
@@ -20,27 +22,6 @@ export interface TranscriptProps {
 	host?: ToolRenderHost;
 	/** Main connection phase; absent for the agent drawer's compact transcript. */
 	phase?: ConnectionPhase;
-}
-
-interface ScrollGeometry {
-	scrollTop: number;
-	readonly scrollHeight: number;
-	readonly clientHeight: number;
-}
-
-interface TailLock {
-	current: boolean;
-}
-
-/** Scroll to the tail while locked; `force` re-arms the lock for a `live` transition. */
-export function followTranscriptTail(element: ScrollGeometry, lock: TailLock, force = false): void {
-	if (force) lock.current = true;
-	if (lock.current) element.scrollTop = element.scrollHeight;
-}
-
-/** Re-derive the lock from current scroll geometry (locked within 40px of the bottom). */
-export function updateTranscriptTailLock(element: ScrollGeometry, lock: TailLock): void {
-	lock.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 40;
 }
 
 function Row({
@@ -60,19 +41,6 @@ function Row({
 				{gutter}
 			</div>
 			<div className="tr-body">{children}</div>
-		</div>
-	);
-}
-
-function ThinkingBlock({ text, redacted }: { text: string; redacted?: boolean }): ReactNode {
-	const [open, setOpen] = useState(false);
-	return (
-		<div className="tr-think">
-			<button type="button" className="tr-think-head" onClick={() => setOpen(v => !v)}>
-				<ChevronRight size={11} className={`tr-chev${open ? " tr-chev--open" : ""}`} />
-				thinking{redacted ? " · redacted" : ""}
-			</button>
-			{open && <div className="tr-think-body">{redacted ? "(redacted by provider)" : text}</div>}
 		</div>
 	);
 }
@@ -103,109 +71,42 @@ function MsgContent({ content }: { content: string | readonly (TextContent | Ima
 	);
 }
 
-function AssistantBody({
-	message,
-	results,
-	active,
-	pending,
-	host,
+/** Local HH:MM of an entry's ISO timestamp; undefined when unparseable. */
+function clockTime(iso: string): string | undefined {
+	const date = new Date(iso);
+	if (Number.isNaN(date.getTime())) return undefined;
+	return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
+
+/** A prompt turn: raised, accent-barred card with a sender · time meta line. */
+function PromptRow({
+	sender,
+	timestamp,
+	content,
 }: {
-	message: AssistantMessage;
-	results: ReadonlyMap<string, ToolResultMessage>;
-	active: ReadonlyMap<string, ActiveTool>;
-	/** Still streaming — suppress stop-reason chips on the partial message. */
-	pending: boolean;
-	host?: ToolRenderHost;
+	sender: string;
+	timestamp: string;
+	content: string | readonly (TextContent | ImageContent)[];
 }): ReactNode {
-	const blocks = message.content.map((block, i) => {
-		switch (block.type) {
-			case "thinking":
-				return <ThinkingBlock key={i} text={block.thinking} />;
-			case "redactedThinking":
-				return <ThinkingBlock key={i} text="" redacted />;
-			case "text":
-				return pending ? <StreamingMarkdown key={i} text={block.text} /> : <Markdown key={i} text={block.text} />;
-			case "toolCall": {
-				const act = active.get(block.id);
-				const result = results.get(block.id);
-				const args = act?.args ?? block.arguments;
-				return (
-					<ToolCard
-						key={block.id}
-						toolCallId={block.id}
-						name={block.name}
-						intent={block.intent ?? act?.intent}
-						args={args}
-						result={result}
-						host={host}
-						running={!result && (act !== undefined || pending)}
-						partialResult={act?.partialResult}
-					/>
-				);
-			}
-			default:
-				return null;
-		}
-	});
-	const stop = message.stopReason;
-	const failed = !pending && (stop === "error" || stop === "aborted");
+	const time = clockTime(timestamp);
 	return (
-		<>
-			{blocks}
-			{failed && (
-				<div className="tr-stop">
-					<span className={`tr-chip ${stop === "error" ? "tr-chip--err" : "tr-chip--warn"}`}>{stop}</span>
-					{message.errorMessage !== undefined && message.errorMessage.length > 0 && (
-						<span className="tr-stop-msg">{message.errorMessage}</span>
-					)}
-				</div>
-			)}
-		</>
+		<Row kind="user" gutter={<ChevronRight size={13} aria-hidden="true" />} title={timestamp}>
+			<div className="tr-meta">
+				<span className="tr-meta-who">{sender}</span>
+				{time !== undefined && <span className="tr-meta-time">{time}</span>}
+			</div>
+			<MsgContent content={content} />
+		</Row>
 	);
 }
 
-interface EntryRowProps {
-	entry: SessionEntry;
-	results: ReadonlyMap<string, ToolResultMessage>;
-	active: ReadonlyMap<string, ActiveTool>;
-	host?: ToolRenderHost;
-}
-
-/** Re-render only when the entry itself or one of its tool pairings changed. */
-function entryRowEqual(prev: EntryRowProps, next: EntryRowProps): boolean {
-	if (prev.entry !== next.entry || prev.host !== next.host) return false;
-	const e = next.entry;
-	if (e.type !== "message" || e.message.role !== "assistant") return true;
-	for (const block of e.message.content) {
-		if (block.type !== "toolCall") continue;
-		if (prev.results.get(block.id) !== next.results.get(block.id)) return false;
-		if (prev.active.get(block.id) !== next.active.get(block.id)) return false;
-	}
-	return true;
-}
-
-const EntryRow = memo(function EntryRow({ entry, results, active, host }: EntryRowProps): ReactNode {
+/** Non-agent entries: prompts, displayed custom messages, dividers and markers. */
+const EntryItem = memo(function EntryItem({ entry }: { entry: SessionEntry }): ReactNode {
 	switch (entry.type) {
-		case "message": {
-			const msg = entry.message;
-			switch (msg.role) {
-				case "user":
-					return (
-						<Row kind="user" gutter="host" title={entry.timestamp}>
-							<MsgContent content={msg.content} />
-						</Row>
-					);
-				case "assistant":
-					return (
-						<Row kind="assistant" gutter="agent" title={entry.timestamp}>
-							<AssistantBody message={msg} results={results} active={active} pending={false} host={host} />
-						</Row>
-					);
-				default:
-					// toolResult entries are consumed via pairing; developer & unknown roles skipped
-					return null;
-			}
-		}
+		case "message":
+			return entry.message.role === "user" ? (
+				<PromptRow sender="host" timestamp={entry.timestamp} content={entry.message.content} />
+			) : null;
 		case "custom_message": {
 			if (entry.customType === "collab-prompt") {
 				const details = entry.details;
@@ -215,13 +116,8 @@ const EntryRow = memo(function EntryRow({ entry, results, active, host }: EntryR
 					typeof (details as Record<string, unknown>).from === "string"
 						? ((details as Record<string, unknown>).from as string)
 						: "guest";
-				return (
-					<Row kind="user" gutter={<span className="tr-badge">{from}</span>} title={entry.timestamp}>
-						<MsgContent content={entry.content} />
-					</Row>
-				);
+				return <PromptRow sender={from} timestamp={entry.timestamp} content={entry.content} />;
 			}
-			if (!entry.display) return null;
 			return (
 				<Row kind="custom" gutter="" title={entry.timestamp}>
 					<div className="tr-custom">
@@ -256,10 +152,51 @@ const EntryRow = memo(function EntryRow({ entry, results, active, host }: EntryR
 				</Row>
 			);
 		default:
-			// unknown entry types from newer hosts — skip tolerantly
 			return null;
 	}
-}, entryRowEqual);
+});
+
+/** One agent text block as a prose item. */
+const AgentText = memo(function AgentText({
+	text,
+	streaming,
+	gutter,
+	title,
+}: {
+	text: string;
+	streaming: boolean;
+	gutter: boolean;
+	title?: string;
+}): ReactNode {
+	return (
+		<Row kind="assistant" gutter={gutter ? "agent" : ""} title={title}>
+			<div className="tr-say">{streaming ? <StreamingMarkdown text={text} /> : <Markdown text={text} />}</div>
+		</Row>
+	);
+});
+
+/** Error/aborted chip after a finished assistant message's blocks. */
+const StopChip = memo(function StopChip({
+	message,
+	gutter,
+	title,
+}: {
+	message: AssistantMessage;
+	gutter: boolean;
+	title?: string;
+}): ReactNode {
+	const stop = message.stopReason;
+	return (
+		<Row kind="assistant" gutter={gutter ? "agent" : ""} title={title}>
+			<div className="tr-stop">
+				<span className={`tr-chip ${stop === "error" ? "tr-chip--err" : "tr-chip--warn"}`}>{stop}</span>
+				{message.errorMessage !== undefined && message.errorMessage.length > 0 && (
+					<span className="tr-stop-msg">{message.errorMessage}</span>
+				)}
+			</div>
+		</Row>
+	);
+});
 
 /**
  * Rows mounted at the tail. Large sessions carry thousands of entries; mounting
@@ -364,6 +301,20 @@ export function Transcript(props: TranscriptProps): ReactNode {
 		return tail;
 	}, [committedToolIds, stream, activeTools]);
 
+	// Committed items re-flatten only when the window changes; the live tail merges on top per token.
+	const committedItems = useMemo(() => flattenEntries(visible), [visible]);
+	const items = useMemo(
+		() => appendLive(committedItems, { stream, pending: !streamDone, tailTools }).items,
+		[committedItems, stream, streamDone, tailTools],
+	);
+	// Auto mode peeks only at a group nothing visible follows yet (an error/aborted chip doesn't
+	// count, so a failed turn keeps its last steps open); agent text, prompts or markers collapse it.
+	const trailingGroup = useMemo(() => {
+		let i = items.length - 1;
+		while (i >= 0 && items[i].kind === "stop") i--;
+		return i >= 0 && items[i].kind === "group" ? i : -1;
+	}, [items]);
+
 	// While the snapshot downloads the banner reports progress; an empty transcript isn't "no activity".
 	const settled = phase === undefined || phase === "live";
 
@@ -392,36 +343,36 @@ export function Transcript(props: TranscriptProps): ReactNode {
 					show {start.toLocaleString("en-US")} earlier
 				</button>
 			)}
-			{visible.map(entry => (
-				<EntryRow key={entry.id} entry={entry} results={results} active={activeTools} host={host} />
-			))}
-			{stream !== null && (
-				<Row kind="assistant" gutter="agent">
-					<AssistantBody
-						message={stream}
-						results={results}
-						active={activeTools}
-						pending={!streamDone}
-						host={host}
-					/>
-				</Row>
-			)}
-			{tailTools.length > 0 && (
-				<Row kind="assistant" gutter={stream === null ? "agent" : ""}>
-					{tailTools.map(tool => (
-						<ToolCard
-							key={tool.toolCallId}
-							toolCallId={tool.toolCallId}
-							name={tool.toolName}
-							intent={tool.intent}
-							args={tool.args}
-							running
-							partialResult={tool.partialResult}
-							host={host}
-						/>
-					))}
-				</Row>
-			)}
+			{items.map((item, index) => {
+				switch (item.kind) {
+					case "entry":
+						return <EntryItem key={item.key} entry={item.entry} />;
+					case "text":
+						return (
+							<AgentText
+								key={item.key}
+								text={item.text}
+								streaming={item.streaming}
+								gutter={item.gutter}
+								title={item.title}
+							/>
+						);
+					case "stop":
+						return <StopChip key={item.key} message={item.message} gutter={item.gutter} title={item.title} />;
+					case "group":
+						return (
+							<Row key={item.key} kind="assistant" gutter={item.gutter ? "agent" : ""}>
+								<ActivityGroup
+									members={item.members}
+									results={results}
+									active={activeTools}
+									host={host}
+									trailing={index === trailingGroup}
+								/>
+							</Row>
+						);
+				}
+			})}
 			{working && stream === null && activeTools.size === 0 && (
 				<Row kind="assistant" gutter="agent">
 					<div className="tr-shimmer">thinking…</div>

@@ -2,11 +2,8 @@ import { describe, expect, it } from "bun:test";
 import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
 import { renderToStaticMarkup } from "react-dom/server";
 import "./transcript-dom-shim";
-import {
-	followTranscriptTail,
-	Transcript,
-	updateTranscriptTailLock,
-} from "../src/components/transcript/Transcript";
+import { followTranscriptTail, updateTranscriptTailLock } from "../src/components/transcript/tail-lock";
+import { Transcript } from "../src/components/transcript/Transcript";
 import type { ActiveTool } from "../src/lib/client";
 
 const TOOL_CALL_ID = "call-running-tool";
@@ -58,13 +55,14 @@ function activeTool(): ActiveTool {
 function renderTranscript(props: {
 	entries?: readonly SessionEntry[];
 	activeTools?: ReadonlyMap<string, ActiveTool>;
+	stream?: AssistantMessage;
 	working: boolean;
 }): string {
 	return renderToStaticMarkup(
 		<Transcript
 			entries={props.entries ?? []}
-			stream={null}
-			streamDone={true}
+			stream={props.stream ?? null}
+			streamDone={props.stream === undefined}
 			activeTools={props.activeTools ?? new Map()}
 			working={props.working}
 		/>,
@@ -190,5 +188,152 @@ describe("Transcript windowing", () => {
 		expect(html).toContain("message-150-end");
 		expect(html).not.toContain("message-149-end");
 		expect(html).toContain("show 150 earlier");
+	});
+});
+
+function assistantMessage(content: AssistantMessage["content"], timestamp: number): AssistantMessage {
+	return {
+		role: "assistant",
+		content,
+		model: "test/model",
+		usage: assistantUsage(),
+		stopReason: "toolUse",
+		timestamp,
+	};
+}
+
+function assistantEntry(id: string, content: AssistantMessage["content"], timestamp: number): SessionEntry {
+	return {
+		type: "message",
+		id,
+		parentId: null,
+		timestamp: "2026-07-20T00:00:00Z",
+		message: assistantMessage(content, timestamp),
+	};
+}
+
+function toolCall(id: string): AssistantMessage["content"][number] {
+	return { type: "toolCall", id, name: TOOL_NAME, arguments: { target: id } };
+}
+
+function toolResultEntry(callId: string): SessionEntry {
+	return {
+		type: "message",
+		id: `result-${callId}`,
+		parentId: null,
+		timestamp: "2026-07-20T00:00:00Z",
+		message: {
+			role: "toolResult",
+			toolCallId: callId,
+			toolName: TOOL_NAME,
+			content: [{ type: "text", text: `output of ${callId}` }],
+			isError: false,
+			timestamp: 0,
+		},
+	};
+}
+
+describe("Transcript activity groups", () => {
+	// Regression: each assistant entry (or the toolResult between them) opening its own tool block.
+	it("merges tool-only assistant entries across tool results into one group", () => {
+		const entries = [
+			assistantEntry("a1", [toolCall("c1")], 1),
+			toolResultEntry("c1"),
+			assistantEntry("a2", [toolCall("c2")], 2),
+			toolResultEntry("c2"),
+		];
+
+		const html = renderTranscript({ entries, working: false });
+
+		expect(countElements(html, ".tr-act")).toBe(1);
+		expect(countElements(html, ".tr-act .tv-card")).toBe(2);
+		expect(countElements(html, ".tv-card")).toBe(2);
+	});
+
+	// Regression: agent prose swallowed into an activity group, or tool runs around it merged.
+	it("splits tool runs at agent text and renders the text outside any group", () => {
+		const entries = [
+			assistantEntry("a1", [toolCall("c1")], 1),
+			toolResultEntry("c1"),
+			assistantEntry("a2", [{ type: "text", text: "Found **it**" }, toolCall("c2")], 2),
+			toolResultEntry("c2"),
+		];
+
+		const html = renderTranscript({ entries, working: false });
+
+		expect(countElements(html, ".tr-act")).toBe(2);
+		// The older group auto-collapses, so only the newest group's card mounts.
+		expect(countElements(html, ".tr-act .tv-card")).toBe(1);
+		expect(countElements(html, ".tr-say strong")).toBe(1);
+		expect(countElements(html, ".tr-act strong")).toBe(0);
+	});
+
+	// Regression: older groups staying open (or the newest collapsing) in auto mode.
+	it("auto-collapses older groups and keeps the newest group capped", () => {
+		const entries = [
+			assistantEntry("a1", [toolCall("older-call")], 1),
+			toolResultEntry("older-call"),
+			assistantEntry("a2", [{ type: "text", text: "Next step" }, toolCall("newest-call")], 2),
+			toolResultEntry("newest-call"),
+		];
+
+		const html = renderTranscript({ entries, working: false });
+
+		expect(countElements(html, ".tr-act--hide")).toBe(1);
+		expect(countElements(html, ".tr-act--hide .tr-act-body")).toBe(0);
+		expect(countElements(html, ".tr-act--cap")).toBe(1);
+		expect(countElements(html, ".tr-act--cap .tv-card")).toBe(1);
+		expect(html.indexOf("tr-act--hide")).toBeLessThan(html.indexOf("tr-act--cap"));
+		expect(html).toContain("newest-call");
+		expect(html).not.toContain("older-call");
+	});
+
+	// Regression: a finished turn's last group staying open above the agent's reply.
+	it("collapses the last group once agent text follows it", () => {
+		const entries = [
+			assistantEntry("a1", [toolCall("done-call")], 1),
+			toolResultEntry("done-call"),
+			assistantEntry("a2", [{ type: "text", text: "All done" }], 2),
+		];
+
+		const html = renderTranscript({ entries, working: false });
+
+		expect(countElements(html, ".tr-act--hide")).toBe(1);
+		expect(countElements(html, ".tr-act--cap")).toBe(0);
+		expect(html).not.toContain("done-call");
+	});
+
+	// Regression: a failed turn hiding the steps that led to the error.
+	it("keeps the last group peeking when only an error chip follows it", () => {
+		const failed: SessionEntry = {
+			type: "message",
+			id: "a1",
+			parentId: null,
+			timestamp: "2026-07-20T00:00:00Z",
+			message: { ...assistantMessage([toolCall("failed-call")], 1), stopReason: "error", errorMessage: "boom" },
+		};
+
+		const html = renderTranscript({ entries: [failed], working: false });
+
+		expect(countElements(html, ".tr-act--cap .tv-card")).toBe(1);
+		expect(countElements(html, ".tr-stop .tr-chip--err")).toBe(1);
+	});
+
+	// Regression: live calls opening a second group next to the committed run they continue.
+	it("extends the trailing committed group with streaming calls and live tail tools", () => {
+		const entries = [assistantEntry("a1", [toolCall("c1")], 1), toolResultEntry("c1")];
+		const stream = assistantMessage([toolCall("c2")], 2);
+
+		const streamed = renderTranscript({ entries, stream, working: true });
+		expect(countElements(streamed, ".tr-act")).toBe(1);
+		expect(countElements(streamed, ".tr-act .tv-card")).toBe(2);
+
+		const tail = renderTranscript({
+			entries,
+			activeTools: new Map([[TOOL_CALL_ID, activeTool()]]),
+			working: true,
+		});
+		expect(countElements(tail, ".tr-act")).toBe(1);
+		expect(countElements(tail, ".tr-act .tv-card")).toBe(2);
 	});
 });

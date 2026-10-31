@@ -42,19 +42,44 @@
 }
 
 .tr-row--user .tr-gutter {
-	padding-top: 12px;
-	color: var(--fg-muted);
+	padding-top: 11px;
+	color: var(--accent);
 }
 
-/* User turns: a raised card so prompts stand apart from agent prose. */
+/* User turns: an accent-tinted raised card with a gradient bar so prompts stand apart from agent prose. */
 .tr-row--user .tr-body {
-	justify-self: start;
-	max-width: 100%;
-	padding: 9px 14px;
-	background: var(--bg-raised);
+	position: relative;
+	justify-self: stretch;
+	padding: 7px 14px 9px 16px;
+	background: color-mix(in oklch, var(--accent-muted) 36%, var(--bg-raised));
 	border: 1px solid var(--border);
 	border-radius: var(--radius-lg);
 	box-shadow: var(--shadow-card);
+	overflow: hidden;
+}
+
+.tr-row--user .tr-body::before {
+	content: "";
+	position: absolute;
+	inset: 0 auto 0 0;
+	width: 2px;
+	background: var(--accent-gradient);
+}
+
+.tr-meta {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	font-family: var(--font-mono);
+	font-size: 10.5px;
+	line-height: 16px;
+	color: var(--fg-faint);
+	user-select: none;
+}
+
+.tr-meta-who {
+	color: var(--accent);
+	font-weight: 600;
 }
 
 .tr-body {
@@ -73,6 +98,249 @@
 	align-self: stretch;
 }
 
+/* ---- agent prose ---- */
+
+.tr-say {
+	align-self: stretch;
+	max-width: 78ch;
+	padding-left: 12px;
+	border-left: 1px solid color-mix(in oklch, var(--accent-a) 40%, transparent);
+}
+
+.tr-say .tr-md {
+	line-height: 1.65;
+}
+
+.tr-say .tr-md h1,
+.tr-say .tr-md h2,
+.tr-say .tr-md h3 {
+	color: color-mix(in oklch, var(--accent-a) 30%, var(--fg));
+	font-weight: 650;
+}
+
+.tr-say .tr-md strong {
+	color: var(--fg);
+	font-weight: 650;
+}
+
+/* Inline code in agent prose: mostly body color with a light cyan cast, so
+ * identifiers stay findable without out-shouting the sentence around them.
+ * Chip tint is kept faint for the same reason; `clone` keeps padding/border
+ * on both halves when a long path wraps. */
+.tr-say .tr-md :not(pre) > code {
+	padding: 0 4px;
+	border-color: color-mix(in oklch, var(--accent-a) 12.6%, var(--border));
+	background: color-mix(in oklch, var(--accent-a) 4.2%, var(--bg-raised));
+	color: color-mix(in oklch, var(--accent-a) 30%, var(--fg));
+	box-decoration-break: clone;
+	-webkit-box-decoration-break: clone;
+}
+
+.tr-say .tr-md a {
+	text-decoration: underline;
+	text-decoration-color: color-mix(in oklch, var(--accent) 45%, transparent);
+	text-underline-offset: 3px;
+}
+
+.tr-say .tr-md a:hover {
+	text-decoration-color: var(--accent);
+}
+
+.tr-say .tr-md blockquote {
+	border-left-color: var(--accent-b);
+}
+
+/* ---- activity groups: consecutive tool calls & thinking ---- */
+
+.tr-act {
+	align-self: stretch;
+	min-width: 0;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-inset);
+	overflow: hidden;
+}
+
+.tr-act-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 26px;
+	padding: 0 4px 0 9px;
+	background: var(--panel);
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--fg-muted);
+	white-space: nowrap;
+}
+
+.tr-act--all .tr-act-bar,
+.tr-act--cap .tr-act-bar {
+	border-bottom: 1px solid var(--border);
+}
+
+/* Summary side of the bar: one button that collapses/expands the group. */
+.tr-act-toggle {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: 8px;
+	min-width: 0;
+	height: 100%;
+	padding: 0;
+	border: none;
+	background: none;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+}
+
+.tr-act-toggle:hover .tr-act-summary {
+	color: var(--fg);
+}
+
+.tr-act-toggle:focus-visible {
+	outline: 1px solid var(--accent);
+	outline-offset: -1px;
+}
+
+.tr-act-summary {
+	flex: none;
+}
+
+.tr-act-icon {
+	flex: none;
+	color: var(--accent-a);
+}
+
+.tr-act-spin {
+	flex: none;
+	color: var(--accent);
+	animation: tr-rot 0.9s linear infinite;
+}
+
+.tr-act-now {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	color: var(--fg-faint);
+}
+
+.tr-act-err {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	flex: none;
+	height: 18px;
+	padding: 0 6px;
+	border: 1px solid color-mix(in oklch, var(--err) 50%, var(--border));
+	border-radius: 999px;
+	background: color-mix(in oklch, var(--err) 10%, transparent);
+	color: var(--err);
+}
+
+/* View control: one bordered button group, hairline dividers, neutral states.
+ * Selection reads through a soft fill and stronger text, not color; a pinned
+ * choice (vs. auto) adds only a small accent dot. */
+.tr-act-modes {
+	display: inline-flex;
+	flex: none;
+	margin-left: auto;
+	border: 1px solid var(--border);
+	border-radius: var(--radius-sm);
+	overflow: hidden;
+}
+
+.tr-act-mode {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 18px;
+	padding: 0;
+	border: none;
+	background: none;
+	color: var(--fg-faint);
+	cursor: pointer;
+}
+
+.tr-act-mode + .tr-act-mode {
+	border-left: 1px solid var(--border);
+}
+
+.tr-act-mode:hover {
+	background: var(--hover);
+	color: var(--fg-muted);
+}
+
+.tr-act-mode:focus-visible {
+	outline: 1px solid var(--ring);
+	outline-offset: -1px;
+}
+
+/* Chosen by auto (recency): one step above hover so selection never reads as a hover. */
+.tr-act-mode[aria-pressed="true"] {
+	background: var(--selected);
+	color: var(--fg-muted);
+}
+
+/* Pinned by the reader: full text color, plus a pin dot. */
+.tr-act-mode[aria-pressed="true"]:not(.tr-act-mode--auto) {
+	color: var(--fg);
+}
+
+.tr-act-mode[aria-pressed="true"]:not(.tr-act-mode--auto)::after {
+	content: "";
+	position: absolute;
+	top: 3px;
+	right: 3px;
+	width: 3px;
+	height: 3px;
+	border-radius: 50%;
+	background: color-mix(in oklch, var(--accent) 70%, transparent);
+}
+
+.tr-act-body {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 6px;
+	padding: 8px;
+}
+
+/* Cards keep their natural height so the 30% cap scrolls instead of squashing them
+ * (`.tv-card` clips overflow, so a shrinkable flex item would collapse to fit). */
+.tr-act-body > * {
+	flex-shrink: 0;
+}
+
+.tr-act--cap .tr-act-body {
+	max-height: 30vh;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.tr-root--compact .tr-act-body {
+	padding: 6px;
+}
+
+.tr-root--compact .tr-act-now {
+	display: none;
+}
+
+@keyframes tr-rot {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.tr-act-spin {
+		animation: tr-pulse 1.4s ease-in-out infinite;
+	}
+}
 
 .tr-row--custom .tr-body {
 	color: var(--fg-muted);
@@ -92,20 +360,7 @@
 	border-radius: var(--radius-sm);
 }
 
-/* ---- chips & badges ---- */
-
-.tr-badge {
-	display: inline-block;
-	padding: 0 7px;
-	border-radius: 999px;
-	background: var(--accent-muted);
-	color: var(--accent);
-	font-family: var(--font-mono);
-	font-size: 11px;
-	line-height: 18px;
-	text-transform: none;
-	letter-spacing: 0;
-}
+/* ---- chips ---- */
 
 .tr-chip {
 	display: inline-flex;
@@ -244,7 +499,8 @@
  * Cards themselves are rendered by src/tool-render (tv-* namespace);
  * only host-level layout lives here. */
 
-.tr-body > .tv-card {
+.tr-body > .tv-card,
+.tr-act-body > .tv-card {
 	align-self: stretch;
 	background: var(--bg-raised);
 	border-radius: var(--radius);
@@ -471,7 +727,14 @@
 		font-size: 11px;
 		margin-bottom: 2px;
 	}
-	.tr-gutter:empty {
+	.tr-gutter:empty,
+	.tr-row--user .tr-gutter {
+		display: none;
+	}
+	.tr-say {
+		padding-left: 10px;
+	}
+	.tr-act-now {
 		display: none;
 	}
 }
