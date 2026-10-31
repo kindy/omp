@@ -27,11 +27,20 @@ bun run build   # static site in dist/
 
 The room key never leaves the URL fragment — it is not sent to the relay or any server.
 
+### Self-host site + relay together
+
+```sh
+bun run start                 # build, then serve dist/ + relay on http://localhost:7466/omp
+bun run serve -- --port 8080  # serve an existing dist/ (also: --dist <dir>)
+```
+
+`scripts/serve.ts` runs one Bun server: `/r/<roomId>?role=host|guest` is the relay WebSocket, `/omp` is the web client, and other paths serve files from `dist/` (hashed bundles, favicons, manifest). `/`, `/index.html` and any unknown path return an empty 404. Host with `/collab ws://localhost:7466`, then open `http://localhost:7466/omp` and paste the printed link (or open `http://localhost:7466/omp#<link>`).
+
 ## Architecture
 
 - `src/lib/` — vendored wire codec (`codec.ts` AES-256-GCM, `link.ts` envelope + link grammar), `socket.ts` reconnecting relay socket, `client.ts` guest session store (`GuestClient` + immutable snapshots for `useSyncExternalStore`). Shared protocol shapes come from `@oh-my-pi/pi-wire`.
 - `src/components/` — `transcript/` (entries, markdown, tool cards), `agents/` (panel + transcript drawer), `shell/` (connect screen, header, composer, banners, toasts).
 - `src/tool-render/` — per-tool React renderers shared with coding-agent HTML session exports: one view per built-in tool, common `ToolView` chrome, theme-adaptive `tv-` design tokens, and an `<omp-tool-view>` web-component wrapper. The `ToolRenderHost` seam lets hosts wire agent-id chips to a sub-session view (drawer here, sidebar navigation in exports).
-- `scripts/` — `local-relay.ts` (content-blind relay on `Bun.serve`), `mock-host.ts` + `fixture.ts` (scripted host for offline dev), `build-export-viewer.ts` (bundles the tool/trace renderers, React, export shell and styles into a content-addressed JS file under `packages/coding-agent/export-assets/`; release CI publishes it to `build.stencil.so`).
+- `scripts/` — `local-relay.ts` (content-blind relay on `Bun.serve`), `serve.ts` (static `dist/` + relay on one port), `mock-host.ts` + `fixture.ts` (scripted host for offline dev), `build-export-viewer.ts` (bundles the tool/trace renderers, React, export shell and styles into a content-addressed JS file under `packages/coding-agent/export-assets/`; release CI publishes it to `build.stencil.so`).
 
 The package is intentionally standalone — no dependency on `@oh-my-pi/pi-coding-agent` at runtime or type level. Wire-shape drift is prevented by consuming the same `@oh-my-pi/pi-wire` contracts as the host, with sealed-frame interop still covered by `test/codec.test.ts`.

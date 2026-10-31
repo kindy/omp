@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `bun run serve` / `bun run start` to serve the built web client at `/omp` and the local relay from one Bun server (`scripts/serve.ts`)
+
 ## [18.13.3] - 2026-10-28
 
 ### Changed

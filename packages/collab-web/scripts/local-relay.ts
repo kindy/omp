@@ -43,17 +43,23 @@ export interface LocalRelay {
 	stop(): void;
 }
 
-export function startLocalRelay(port = 0): LocalRelay {
+/**
+ * Non-relay HTTP requests go to `fallback` when given (e.g. a static site
+ * served from the same origin); without it they get 404.
+ */
+export type RelayFallback = (req: Request) => Response | Promise<Response>;
+
+export function startLocalRelay(port = 0, fallback?: RelayFallback): LocalRelay {
 	const rooms = new Map<string, Room>();
 
 	const server = Bun.serve({
 		port,
-		fetch(req, srv): Response | undefined {
+		fetch(req, srv): Response | Promise<Response> | undefined {
 			const url = new URL(req.url);
 			const match = ROOM_PATH_RE.exec(url.pathname);
 			const role = url.searchParams.get("role");
 			if (!match || (role !== "host" && role !== "guest")) {
-				return new Response("not found", { status: 404 });
+				return fallback ? fallback(req) : new Response("not found", { status: 404 });
 			}
 			const data: SocketData = { roomId: match[1]!, role, peerId: 0 };
 			if (srv.upgrade(req, { data })) return undefined;
@@ -137,7 +143,7 @@ export function startLocalRelay(port = 0): LocalRelay {
 		},
 	};
 }
-function parsePort(argv: readonly string[]): number {
+export function parsePort(argv: readonly string[]): number {
 	let raw: string | undefined;
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i]!;
