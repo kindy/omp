@@ -7,11 +7,20 @@ import type {
 } from "@oh-my-pi/pi-wire";
 import type { ActiveTool } from "../../lib/client";
 
-/** One member of an activity group: a tool call, a live tool not yet in any message, or a thinking block. */
+/**
+ * One member of an activity group: a tool call, a live tool not yet in any message, or a thinking block.
+ * `message` is the assistant message (one LLM call) the block came from.
+ */
 export type ActivityMember =
-	| { kind: "tool"; key: string; call: ToolCallContent; /** From the still-streaming message. */ pending: boolean }
+	| {
+			kind: "tool";
+			key: string;
+			call: ToolCallContent;
+			message: AssistantMessage;
+			/** From the still-streaming message. */ pending: boolean;
+	  }
 	| { kind: "tail"; key: string; tool: ActiveTool }
-	| { kind: "thinking"; key: string; block: ThinkingContent | RedactedThinkingContent };
+	| { kind: "thinking"; key: string; block: ThinkingContent | RedactedThinkingContent; message: AssistantMessage };
 
 /**
  * A direct child of the transcript root. `gutter` marks the first agent item
@@ -20,7 +29,15 @@ export type ActivityMember =
  */
 export type TranscriptItem =
 	| { kind: "entry"; key: string; entry: SessionEntry }
-	| { kind: "text"; key: string; text: string; streaming: boolean; gutter: boolean; title?: string }
+	| {
+			kind: "text";
+			key: string;
+			text: string;
+			streaming: boolean;
+			gutter: boolean;
+			/** Unix ms of the assistant message (LLM call start). */ time: number;
+			title?: string;
+	  }
 	| { kind: "group"; key: string; members: readonly ActivityMember[]; gutter: boolean }
 	| { kind: "stop"; key: string; message: AssistantMessage; gutter: boolean; title?: string };
 
@@ -122,16 +139,17 @@ class ItemBuilder {
 						key: this.#key(`${stamp}:${i}`),
 						text: block.text,
 						streaming: pending,
+						time: stamp,
 						gutter: this.#gutter(),
 						title,
 					});
 					return;
 				case "toolCall":
-					this.#member({ kind: "tool", key: this.#key(block.id), call: block, pending });
+					this.#member({ kind: "tool", key: this.#key(block.id), call: block, message, pending });
 					return;
 				case "thinking":
 				case "redactedThinking":
-					this.#member({ kind: "thinking", key: this.#key(`${stamp}:${i}`), block });
+					this.#member({ kind: "thinking", key: this.#key(`${stamp}:${i}`), block, message });
 					return;
 				default:
 					return;

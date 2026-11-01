@@ -71,9 +71,9 @@ function MsgContent({ content }: { content: string | readonly (TextContent | Ima
 	);
 }
 
-/** Local HH:MM of an entry's ISO timestamp; undefined when unparseable. */
-function clockTime(iso: string): string | undefined {
-	const date = new Date(iso);
+/** Local HH:MM of an ISO timestamp or epoch ms; undefined when unparseable. */
+function clockTime(at: string | number): string | undefined {
+	const date = new Date(at);
 	if (Number.isNaN(date.getTime())) return undefined;
 	return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
@@ -156,21 +156,32 @@ const EntryItem = memo(function EntryItem({ entry }: { entry: SessionEntry }): R
 	}
 });
 
-/** One agent text block as a prose item. */
+/** One agent text block as a prose item, under the same meta line as prompts. */
 const AgentText = memo(function AgentText({
 	text,
 	streaming,
 	gutter,
+	time,
 	title,
 }: {
 	text: string;
 	streaming: boolean;
 	gutter: boolean;
+	time: number;
 	title?: string;
 }): ReactNode {
+	const clock = clockTime(time);
 	return (
 		<Row kind="assistant" gutter={gutter ? "agent" : ""} title={title}>
-			<div className="tr-say">{streaming ? <StreamingMarkdown text={text} /> : <Markdown text={text} />}</div>
+			<div className="tr-say">
+				{clock !== undefined && (
+					<div className="tr-meta">
+						<span className="tr-meta-who tr-meta-who--agent">agent</span>
+						<span className="tr-meta-time">{clock}</span>
+					</div>
+				)}
+				{streaming ? <StreamingMarkdown text={text} /> : <Markdown text={text} />}
+			</div>
 		</Row>
 	);
 });
@@ -354,6 +365,7 @@ export function Transcript(props: TranscriptProps): ReactNode {
 								text={item.text}
 								streaming={item.streaming}
 								gutter={item.gutter}
+								time={item.time}
 								title={item.title}
 							/>
 						);

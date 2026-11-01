@@ -4,10 +4,10 @@
  * both the site and the relay.
  *
  * - `GET /r/<roomId>?role=host|guest` → relay WebSocket (see `local-relay.ts`).
- * - `GET /omp` → the web client (`dist/index.html`). Routing is hash-only, so
+ * - `GET /` → the web client (`dist/index.html`). Routing is hash-only, so
  *   no SPA fallback is needed; its `./<hash>.js` asset refs resolve to the root.
  * - Other paths → the matching regular file in `dist/` (bundles, favicons, …).
- * - Everything else, including `/`, `/index.html` and directories → empty 404.
+ * - Everything else, including `/index.html` and directories → empty 404.
  *
  * Usage: `bun run build && bun scripts/serve.ts [--port N] [--dist DIR]`.
  */
@@ -17,7 +17,7 @@ import { parsePort, startLocalRelay } from "./local-relay";
 
 const DEFAULT_DIST = path.join(import.meta.dir, "..", "dist");
 
-const APP_PATH = "/omp";
+const APP_PATH = "/";
 
 /** Resolves a request path to a regular file under `root`, or null. */
 async function resolveFile(root: string, pathname: string): Promise<string | null> {

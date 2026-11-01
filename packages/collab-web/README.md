@@ -30,11 +30,11 @@ The room key never leaves the URL fragment — it is not sent to the relay or an
 ### Self-host site + relay together
 
 ```sh
-bun run start                 # build, then serve dist/ + relay on http://localhost:7466/omp
+bun run start                 # build, then serve dist/ + relay on http://localhost:7466/
 bun run serve -- --port 8080  # serve an existing dist/ (also: --dist <dir>)
 ```
 
-`scripts/serve.ts` runs one Bun server: `/r/<roomId>?role=host|guest` is the relay WebSocket, `/omp` is the web client, and other paths serve files from `dist/` (hashed bundles, favicons, manifest). `/`, `/index.html` and any unknown path return an empty 404. Host with `/collab ws://localhost:7466`, then open `http://localhost:7466/omp` and paste the printed link (or open `http://localhost:7466/omp#<link>`).
+`scripts/serve.ts` runs one Bun server: `/r/<roomId>?role=host|guest` is the relay WebSocket, `/` is the web client, and other paths serve files from `dist/` (hashed bundles, favicons, manifest). `/index.html` and any unknown path return an empty 404. Host with `/collab ws://localhost:7466`, then open `http://localhost:7466/` and paste the printed link (or open `http://localhost:7466/#<link>`).
 
 ## Architecture
 

@@ -82,6 +82,10 @@
 	font-weight: 600;
 }
 
+.tr-meta-who--agent {
+	color: var(--accent-a);
+}
+
 .tr-body {
 	min-width: 0;
 	display: flex;
@@ -218,6 +222,15 @@
 	flex: none;
 	color: var(--accent);
 	animation: tr-rot 0.9s linear infinite;
+}
+
+/* Leads the bar, like the time on prompt/agent meta lines. */
+.tr-act-time {
+	flex: none;
+	min-width: 4ch;
+	color: var(--fg-faint);
+	font-size: 10.5px;
+	font-variant-numeric: tabular-nums;
 }
 
 .tr-act-now {

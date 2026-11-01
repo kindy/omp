@@ -1,7 +1,8 @@
-import type { ToolResultMessage } from "@oh-my-pi/pi-wire";
+import type { AssistantMessage, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { ChevronRight, Eye, FoldVertical, LoaderCircle, TriangleAlert, UnfoldVertical, Wrench } from "lucide-react";
 import type { ReactNode } from "react";
-import { memo, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { fmtDuration } from "../../lib/format";
 import type { ActiveTool } from "../../lib/client";
 import type { ToolRenderHost } from "../../tool-render";
 import type { ActivityMember } from "./items";
@@ -110,6 +111,29 @@ export const ActivityGroup = memo(function ActivityGroup({
 		if (mode === "cap" && el !== null) followTranscriptTail(el, lockRef);
 	});
 
+	// Wall time: first LLM call start → latest known event (message start or tool result).
+	// LLM calls: distinct source messages (each assistant message is one call).
+	let first = Number.POSITIVE_INFINITY;
+	let last = Number.NEGATIVE_INFINITY;
+	const calls = new Set<AssistantMessage>();
+	const see = (at: number): void => {
+		if (!Number.isFinite(at)) return;
+		if (at < first) first = at;
+		if (at > last) last = at;
+	};
+	for (const member of members) {
+		if (member.kind === "tail") {
+			see(member.tool.startedAt);
+			continue;
+		}
+		calls.add(member.message);
+		see(member.message.timestamp);
+		if (member.kind === "tool") {
+			const result = results.get(member.call.id);
+			if (result !== undefined) see(result.timestamp);
+		}
+	}
+
 	let tools = 0;
 	let thinking = 0;
 	let errors = 0;
@@ -170,10 +194,21 @@ export const ActivityGroup = memo(function ActivityGroup({
 			}
 		}
 	});
+	// A running group's clock keeps ticking; memo equality alone would freeze it.
+	const [now, setNow] = useState(Date.now);
+	useEffect(() => {
+		if (!running) return;
+		setNow(Date.now());
+		const timer = setInterval(() => setNow(Date.now()), 1000);
+		return () => clearInterval(timer);
+	}, [running]);
+	const end = running ? Math.max(last, now) : last;
+	const elapsed = Number.isFinite(first) && end > first ? end - first : undefined;
 
 	const summary = [
 		tools > 0 ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "",
 		thinking > 0 ? `${thinking} thinking` : "",
+		calls.size > 0 ? `${calls.size} llm` : "",
 	]
 		.filter(part => part !== "")
 		.join(" · ");
@@ -188,8 +223,18 @@ export const ActivityGroup = memo(function ActivityGroup({
 					title={mode === "hide" ? "Show steps" : "Collapse to the summary bar"}
 					onClick={() => choose(mode === "hide" ? "cap" : "hide")}
 				>
+					{elapsed !== undefined && (
+						<span className="tr-act-time" title="Wall time from the first LLM call to the latest step">
+							{fmtDuration(elapsed)}
+						</span>
+					)}
 					<Wrench size={12} className="tr-act-icon" aria-hidden="true" />
-					<span className="tr-act-summary">{summary}</span>
+					<span
+						className="tr-act-summary"
+						title={calls.size > 0 ? `${calls.size} ${calls.size === 1 ? "LLM call" : "LLM calls"}` : undefined}
+					>
+						{summary}
+					</span>
 					{running && <LoaderCircle size={12} className="tr-act-spin" aria-hidden="true" />}
 					{running && runningIntent !== undefined && <span className="tr-act-now">{runningIntent}</span>}
 					{errors > 0 && (

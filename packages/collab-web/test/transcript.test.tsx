@@ -216,7 +216,7 @@ function toolCall(id: string): AssistantMessage["content"][number] {
 	return { type: "toolCall", id, name: TOOL_NAME, arguments: { target: id } };
 }
 
-function toolResultEntry(callId: string): SessionEntry {
+function toolResultEntry(callId: string, timestamp = 0): SessionEntry {
 	return {
 		type: "message",
 		id: `result-${callId}`,
@@ -228,7 +228,7 @@ function toolResultEntry(callId: string): SessionEntry {
 			toolName: TOOL_NAME,
 			content: [{ type: "text", text: `output of ${callId}` }],
 			isError: false,
-			timestamp: 0,
+			timestamp,
 		},
 	};
 }
@@ -248,6 +248,22 @@ describe("Transcript activity groups", () => {
 		expect(countElements(html, ".tr-act")).toBe(1);
 		expect(countElements(html, ".tr-act .tv-card")).toBe(2);
 		expect(countElements(html, ".tv-card")).toBe(2);
+	});
+
+	// Each assistant message is one LLM call; wall time spans first call start to last tool result.
+	it("summarizes a finished group's LLM calls and wall time from message and result timestamps", () => {
+		const entries = [
+			assistantEntry("a1", [{ type: "thinking", thinking: "plan" }, toolCall("c1"), toolCall("c2")], 1_000),
+			toolResultEntry("c1", 3_000),
+			toolResultEntry("c2", 4_000),
+			assistantEntry("a2", [toolCall("c3")], 5_000),
+			toolResultEntry("c3", 13_500),
+		];
+
+		const html = renderTranscript({ entries, working: false });
+
+		expect(html).toContain("3 tools · 1 thinking · 2 llm");
+		expect(html).toMatch(/class="tr-act-time"[^>]*>12\.5s</);
 	});
 
 	// Regression: agent prose swallowed into an activity group, or tool runs around it merged.
