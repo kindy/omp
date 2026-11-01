@@ -1,0 +1,13 @@
+{
+  "name": "collab-web-cf",
+  "private": true,
+  "type": "module",
+  "description": "Static-only Cloudflare Workers deployment of packages/collab-web (fork-local; not a workspace package)",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "dev": "bun scripts/build.ts && bunx wrangler@^4.135.0 dev",
+    "preview": "bun scripts/build.ts && bunx wrangler@^4.135.0 preview",
+    "deploy": "bun scripts/build.ts && bunx wrangler@^4.135.0 deploy",
+    "check": "bun scripts/build.ts && bunx wrangler@^4.135.0 deploy --dry-run"
+  }
+}

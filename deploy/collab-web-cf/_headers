@@ -1,0 +1,12 @@
+# Cloudflare Workers static-asset headers.
+
+# Content-hashed bundles never change under the same name.
+/*.js
+  Cache-Control: public, max-age=31536000, immutable
+/*.css
+  Cache-Control: public, max-age=31536000, immutable
+
+# Personal deployment: keep production and Preview URLs out of search results.
+/*
+  X-Robots-Tag: noindex
+  Referrer-Policy: no-referrer
