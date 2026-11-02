@@ -542,9 +542,18 @@
 	margin: 6px 0;
 }
 
+/* `pre-wrap` disabled: marked emits "\n" text nodes between block tags
+ * (`</p>\n<blockquote>`, `</ul>\n</li>`, ...), which `pre-wrap` rendered as
+ * blank lines around quotes, code blocks, tables and nested lists inside list
+ * items. CSS cannot tell those formatting newlines from content, so the rule
+ * is off. Soft line breaks still render (`breaks: true` emits `<br>`); the
+ * cost is that runs of spaces in prose (tree art `| +--`, column alignment)
+ * collapse to one - agent output keeps such text in code blocks, which `pre`
+ * still preserves. Re-enable only together with stripping those newlines in
+ * the renderer. */
 .tr-md p,
 .tr-md li {
-	white-space: pre-wrap;
+	/* white-space: pre-wrap; */
 }
 
 .tr-md h1,

@@ -8,6 +8,10 @@
 - Added collapsible activity groups to the transcript: consecutive tool calls and thinking blocks merge into one card with a summary bar (tool/thinking counts, running spinner, error count) and Expand / Peek / Collapse views; by default only the group the agent is still working on peeks (capped at 30% of the viewport) and every group collapses once a reply or prompt follows it (a failed turn keeps its last steps open), while a view choice, a click inside, or scrolling up inside a group pins it. Also restyled prompts (accent bar, sender · time line) and agent prose
 - Added a sender · time line to agent replies (matching prompts), and wall time plus LLM call count to activity group summary bars
 
+### Fixed
+
+- Fixed extra blank lines above and below block quotes, code blocks, tables and nested lists inside transcript list items; runs of spaces in transcript prose now collapse to one (code blocks still keep them)
+
 ## [18.13.3] - 2026-10-28
 
 ### Changed
