@@ -1,11 +1,12 @@
 import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
-import { ChevronRight } from "lucide-react";
-import type { ReactNode } from "react";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronRight, Copy } from "lucide-react";
+import type { MouseEvent, ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ActiveTool, ConnectionPhase } from "../../lib/client";
 import { fmtTokens } from "../../lib/format";
 import type { ToolRenderHost } from "../../tool-render";
 import { ActivityGroup } from "./ActivityGroup";
+import { contentMarkdown, copyText, promptOf, turnMarkdown } from "./copy";
 import { appendLive, flattenEntries } from "./items";
 import { Markdown, StreamingMarkdown } from "./Markdown";
 import { followTranscriptTail, updateTranscriptTailLock } from "./tail-lock";
@@ -78,15 +79,60 @@ function clockTime(at: string | number): string | undefined {
 	return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+/** Markdown of the whole turn holding an item key; stable across renders so memoized rows keep it. */
+type TurnCopier = (key: string) => string;
+
+/**
+ * Copies a block's Markdown source; ⌥/Alt-click copies the whole turn: the prompt plus every
+ * agent reply up to the next prompt. Alt is the "alternate action" key and is free on web
+ * buttons; Shift and ⌘/Ctrl read as range/multi-select (and Shift-click extends text selection).
+ */
+function CopyButton({
+	markdown,
+	itemKey,
+	copyTurn,
+}: {
+	markdown: string;
+	itemKey: string;
+	copyTurn: TurnCopier;
+}): ReactNode {
+	const [copied, setCopied] = useState<"block" | "turn" | null>(null);
+	const timerRef = useRef<Timer | undefined>(undefined);
+	useEffect(() => () => clearTimeout(timerRef.current), []);
+	const onClick = (e: MouseEvent<HTMLButtonElement>): void => {
+		const turn = e.altKey;
+		void copyText(turn ? copyTurn(itemKey) : markdown).then(() => {
+			setCopied(turn ? "turn" : "block");
+			clearTimeout(timerRef.current);
+			timerRef.current = setTimeout(() => setCopied(null), 1200);
+		});
+	};
+	return (
+		<button
+			type="button"
+			className={`tr-copy${copied !== null ? " tr-copy--done" : ""}`}
+			onClick={onClick}
+			title="Copy Markdown · ⌥/Alt-click copies the whole turn"
+		>
+			{copied !== null ? <Check size={12} aria-hidden /> : <Copy size={12} aria-hidden />}
+			<span>{copied === "turn" ? "copied turn" : copied === "block" ? "copied" : "copy"}</span>
+		</button>
+	);
+}
+
 /** A prompt turn: raised, accent-barred card with a sender · time meta line. */
 function PromptRow({
 	sender,
 	timestamp,
 	content,
+	itemKey,
+	copyTurn,
 }: {
 	sender: string;
 	timestamp: string;
 	content: string | readonly (TextContent | ImageContent)[];
+	itemKey: string;
+	copyTurn: TurnCopier;
 }): ReactNode {
 	const time = clockTime(timestamp);
 	return (
@@ -96,28 +142,35 @@ function PromptRow({
 				{time !== undefined && <span className="tr-meta-time">{time}</span>}
 			</div>
 			<MsgContent content={content} />
+			<CopyButton markdown={contentMarkdown(content)} itemKey={itemKey} copyTurn={copyTurn} />
 		</Row>
 	);
 }
 
 /** Non-agent entries: prompts, displayed custom messages, dividers and markers. */
-const EntryItem = memo(function EntryItem({ entry }: { entry: SessionEntry }): ReactNode {
+const EntryItem = memo(function EntryItem({
+	entry,
+	itemKey,
+	copyTurn,
+}: {
+	entry: SessionEntry;
+	itemKey: string;
+	copyTurn: TurnCopier;
+}): ReactNode {
+	const prompt = promptOf(entry);
+	if (prompt !== null) {
+		return (
+			<PromptRow
+				sender={prompt.sender}
+				timestamp={entry.timestamp}
+				content={prompt.content}
+				itemKey={itemKey}
+				copyTurn={copyTurn}
+			/>
+		);
+	}
 	switch (entry.type) {
-		case "message":
-			return entry.message.role === "user" ? (
-				<PromptRow sender="host" timestamp={entry.timestamp} content={entry.message.content} />
-			) : null;
 		case "custom_message": {
-			if (entry.customType === "collab-prompt") {
-				const details = entry.details;
-				const from =
-					details !== null &&
-					typeof details === "object" &&
-					typeof (details as Record<string, unknown>).from === "string"
-						? ((details as Record<string, unknown>).from as string)
-						: "guest";
-				return <PromptRow sender={from} timestamp={entry.timestamp} content={entry.content} />;
-			}
 			return (
 				<Row kind="custom" gutter="" title={entry.timestamp}>
 					<div className="tr-custom">
@@ -163,12 +216,16 @@ const AgentText = memo(function AgentText({
 	gutter,
 	time,
 	title,
+	itemKey,
+	copyTurn,
 }: {
 	text: string;
 	streaming: boolean;
 	gutter: boolean;
 	time: number;
 	title?: string;
+	itemKey: string;
+	copyTurn: TurnCopier;
 }): ReactNode {
 	const clock = clockTime(time);
 	return (
@@ -181,6 +238,7 @@ const AgentText = memo(function AgentText({
 					</div>
 				)}
 				{streaming ? <StreamingMarkdown text={text} /> : <Markdown text={text} />}
+				{!streaming && <CopyButton markdown={text} itemKey={itemKey} copyTurn={copyTurn} />}
 			</div>
 		</Row>
 	);
@@ -318,13 +376,15 @@ export function Transcript(props: TranscriptProps): ReactNode {
 		() => appendLive(committedItems, { stream, pending: !streamDone, tailTools }).items,
 		[committedItems, stream, streamDone, tailTools],
 	);
-	// Auto mode peeks only at a group nothing visible follows yet (an error/aborted chip doesn't
-	// count, so a failed turn keeps its last steps open); agent text, prompts or markers collapse it.
 	const trailingGroup = useMemo(() => {
 		let i = items.length - 1;
 		while (i >= 0 && items[i].kind === "stop") i--;
 		return i >= 0 && items[i].kind === "group" ? i : -1;
 	}, [items]);
+	// Read at click time, so rows keep one callback identity and stay memoized while items change.
+	const itemsRef = useRef(items);
+	itemsRef.current = items;
+	const copyTurn = useCallback<TurnCopier>(key => turnMarkdown(itemsRef.current, key), []);
 
 	// While the snapshot downloads the banner reports progress; an empty transcript isn't "no activity".
 	const settled = phase === undefined || phase === "live";
@@ -357,7 +417,7 @@ export function Transcript(props: TranscriptProps): ReactNode {
 			{items.map((item, index) => {
 				switch (item.kind) {
 					case "entry":
-						return <EntryItem key={item.key} entry={item.entry} />;
+						return <EntryItem key={item.key} entry={item.entry} itemKey={item.key} copyTurn={copyTurn} />;
 					case "text":
 						return (
 							<AgentText
@@ -367,6 +427,8 @@ export function Transcript(props: TranscriptProps): ReactNode {
 								gutter={item.gutter}
 								time={item.time}
 								title={item.title}
+								itemKey={item.key}
+								copyTurn={copyTurn}
 							/>
 						);
 					case "stop":

@@ -102,6 +102,47 @@
 	align-self: stretch;
 }
 
+/* Copy button under prompts and agent replies: hidden until the row is hovered or focused;
+ * always visible on touch screens, which have no hover. */
+.tr-copy {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-top: 2px;
+	padding: 1px 6px;
+	border: 1px solid transparent;
+	border-radius: var(--radius);
+	background: none;
+	color: var(--fg-faint);
+	font-family: var(--font-mono);
+	font-size: 10.5px;
+	line-height: 16px;
+	cursor: pointer;
+	opacity: 0;
+	transition: opacity 0.12s;
+}
+
+.tr-row:hover .tr-copy,
+.tr-copy:focus-visible,
+.tr-copy--done {
+	opacity: 1;
+}
+
+@media (hover: none) {
+	.tr-copy {
+		opacity: 1;
+	}
+}
+
+.tr-copy:hover {
+	border-color: var(--border);
+	color: var(--fg);
+}
+
+.tr-copy--done {
+	color: var(--accent);
+}
+
 /* ---- agent prose ---- */
 
 .tr-say {
