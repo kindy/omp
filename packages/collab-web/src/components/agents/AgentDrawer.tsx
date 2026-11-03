@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import type { GuestClient } from "../../lib/client";
 import { fmtCost, fmtDuration, fmtTokens } from "../../lib/format";
 import { decideTranscriptPoll } from "../../lib/transcript-poll";
+import { isImeKeydown, useCompositionGuard } from "../shell/Composer";
 import type { TranscriptProps } from "../transcript/Transcript";
 import { Transcript } from "../transcript/Transcript";
 
@@ -28,6 +29,7 @@ export function AgentDrawer(props: {
 	const [entries, setEntries] = useState<readonly SessionEntry[]>([]);
 	const [fetchError, setFetchError] = useState<string | null>(null);
 	const [draft, setDraft] = useState("");
+	const { composingRef, onCompositionStart, onCompositionEnd } = useCompositionGuard();
 	/** Resumes a stopped poll loop; null while no loop is mounted. */
 	const resumePollingRef = useRef<(() => void) | null>(null);
 	const quiescentRef = useRef(false);
@@ -35,7 +37,8 @@ export function AgentDrawer(props: {
 
 	useEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") onClose();
+			// Esc also cancels an IME composition; only a bare Esc closes the drawer.
+			if (e.key === "Escape" && !e.isComposing && e.keyCode !== 229) onClose();
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
@@ -232,6 +235,12 @@ export function AgentDrawer(props: {
 						value={draft}
 						placeholder={`message ${agent.displayName}…`}
 						onChange={e => setDraft(e.target.value)}
+						// Enter confirming an IME candidate must not trigger the form's implicit submit.
+						onKeyDown={e => {
+							if (e.key === "Enter" && isImeKeydown(e, composingRef.current)) e.preventDefault();
+						}}
+						onCompositionStart={onCompositionStart}
+						onCompositionEnd={onCompositionEnd}
 					/>
 					<button type="submit" className="ag-iconbtn" aria-label="send" disabled={draft.trim().length === 0}>
 						<SendHorizontal size={15} aria-hidden />

@@ -32,12 +32,19 @@ function autosize(el: HTMLTextAreaElement | null): void {
 /**
  * Decides whether an Enter keydown should commit the composer. Returns `false` while an IME
  * composition is active so the keystroke confirms the composition instead of submitting.
- * `nativeEvent.isComposing` covers most browsers; `composing` bridges WebKit, which fires the
- * confirming Enter keydown *after* `compositionend`.
+ * `nativeEvent.isComposing` covers most browsers; `keyCode === 229` ("IME is processing this
+ * key") catches Safari and some macOS/Chinese IMEs that fire the confirming Enter keydown
+ * *after* `compositionend` with `isComposing` already `false`; `composing` is the ref fallback
+ * for the same late keydown.
  */
-export function shouldSubmitOnEnter(e: KeyboardEvent<HTMLTextAreaElement>, composing: boolean): boolean {
+export function shouldSubmitOnEnter(e: KeyboardEvent<HTMLElement>, composing: boolean): boolean {
 	if (e.key !== "Enter" || e.shiftKey) return false;
-	return !(e.nativeEvent.isComposing || composing);
+	return !isImeKeydown(e, composing);
+}
+
+/** True when a keydown belongs to an IME composition (see {@link shouldSubmitOnEnter}). */
+export function isImeKeydown(e: KeyboardEvent<HTMLElement>, composing: boolean): boolean {
+	return e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229 || composing;
 }
 
 /**
@@ -45,7 +52,7 @@ export function shouldSubmitOnEnter(e: KeyboardEvent<HTMLTextAreaElement>, compo
  * `compositionend` reset is deferred a tick because WebKit dispatches the confirming Enter
  * keydown after `compositionend`, when `nativeEvent.isComposing` is already `false`.
  */
-function useCompositionGuard(): {
+export function useCompositionGuard(): {
 	composingRef: RefObject<boolean>;
 	onCompositionStart(): void;
 	onCompositionEnd(): void;

@@ -64,11 +64,11 @@ describe("Composer host UI requests", () => {
 
 type KeyEvt = KeyboardEvent<HTMLTextAreaElement>;
 
-function keydown(key: string, opts: { shiftKey?: boolean; isComposing?: boolean } = {}): KeyEvt {
+function keydown(key: string, opts: { shiftKey?: boolean; isComposing?: boolean; keyCode?: number } = {}): KeyEvt {
 	return {
 		key,
 		shiftKey: opts.shiftKey ?? false,
-		nativeEvent: { isComposing: opts.isComposing ?? false },
+		nativeEvent: { isComposing: opts.isComposing ?? false, keyCode: opts.keyCode ?? 13 },
 	} as KeyEvt;
 }
 
@@ -83,6 +83,10 @@ describe("shouldSubmitOnEnter IME guard", () => {
 
 	it("does not submit while the WebKit composing ref is still set", () => {
 		expect(shouldSubmitOnEnter(keydown("Enter"), true)).toBe(false);
+	});
+
+	it("does not submit on the late IME-confirm Enter (keyCode 229, isComposing false)", () => {
+		expect(shouldSubmitOnEnter(keydown("Enter", { keyCode: 229 }), false)).toBe(false);
 	});
 
 	it("does not submit on Shift+Enter (newline)", () => {
