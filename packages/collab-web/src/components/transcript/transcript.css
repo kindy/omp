@@ -521,13 +521,18 @@
 
 /* ---- markdown ---- */
 
-/* Match the TUI's word-boundary wrapping: keep Korean/CJK words intact when
- * possible, but still emergency-break long URLs or identifiers before they
- * overflow the transcript. */
+/* Long URLs or identifiers still emergency-break before they overflow the
+ * transcript.
+ * `word-break: keep-all` disabled: it removes the break opportunities between
+ * CJK characters, so Chinese (no spaces between words) only wraps at
+ * punctuation - a whole clause jumps to the next line leaving a ragged gap,
+ * and clauses wider than the line fall to emergency breaks that ignore kinsoku
+ * (a lone `。` at line start). It was added to keep space-separated Korean
+ * words intact; the cost is that Korean may now break inside a word. */
 .tr-md {
 	line-height: 1.55;
 	overflow-wrap: break-word;
-	word-break: keep-all;
+	/* word-break: keep-all; */
 }
 
 .tr-md > :first-child {
@@ -645,14 +650,15 @@
 }
 
 /* Table cells need `anywhere` so long URLs/identifiers contribute a shrinkable
- * intrinsic width instead of expanding under the transcript's clipped overflow. */
+ * intrinsic width instead of expanding under the transcript's clipped overflow.
+ * `keep-all` disabled for the same CJK reason as `.tr-md` above. */
 .tr-md th,
 .tr-md td {
 	padding: 3px 8px;
 	border: 1px solid var(--border);
 	overflow-wrap: anywhere;
 	text-align: left;
-	word-break: keep-all;
+	/* word-break: keep-all; */
 }
 
 .tr-md th {

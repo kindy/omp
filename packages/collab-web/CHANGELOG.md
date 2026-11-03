@@ -11,6 +11,7 @@
 ### Fixed
 
 - Fixed extra blank lines above and below block quotes, code blocks, tables and nested lists inside transcript list items; runs of spaces in transcript prose now collapse to one (code blocks still keep them)
+- Fixed Chinese transcript text and table cells wrapping only at punctuation, which pushed whole clauses to the next line and left lone punctuation at line starts; Korean words may now break mid-word
 
 ## [18.13.3] - 2026-10-28
 
